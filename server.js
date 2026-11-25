@@ -712,7 +712,12 @@ app.post("/api/auth/login", async (req, res) => {
     try {
       user = await prisma.user.findFirst({
         where: {
-          OR: [{ email: loginId }, { phone: loginId }],
+          OR: [
+            { email: loginId },
+            { phone: loginId },
+            { phone: `+91${loginId}` },
+            { phone: loginId.replace("+91", "") },
+          ],
         },
         include: { ownedProvider: true, studentProfile: true },
       });

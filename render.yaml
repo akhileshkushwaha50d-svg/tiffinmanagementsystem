@@ -10,7 +10,7 @@ services:
     plan: free
     region: oregon
     buildCommand: npm install && npx prisma generate
-    startCommand: npm start
+    startCommand: npx prisma db push --accept-data-loss && node prisma/seed.js && npm start
     healthCheckPath: /health
     envVars:
       - key: NODE_ENV

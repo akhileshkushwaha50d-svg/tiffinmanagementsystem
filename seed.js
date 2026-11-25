@@ -1,8 +1,8 @@
 /**
  * prisma/seed.js - Production & Staging Database Seeding Script
  * Strictly adheres to prisma/schema.prisma models, enums, and fields.
- * Populates realistic demo accounts, menus, subscriptions, inventory, and staff.
- * Execute with: npx prisma db seed
+ * 100% Idempotent using upsert and existence checks.
+ * Execute with: node prisma/seed.js or npx prisma db seed
  */
 
 import { PrismaClient } from "@prisma/client";
@@ -17,10 +17,13 @@ async function main() {
   const ownerPasswordHash = await bcrypt.hash("owner123", 10);
   const studentPasswordHash = await bcrypt.hash("student123", 10);
 
-  // 2. Upsert Demo Owner
+  // 2. Upsert Demo Owner: Rajesh Sharma (owner@annapurnatiffin.com)
   const ownerUser = await prisma.user.upsert({
     where: { email: "owner@annapurnatiffin.com" },
-    update: {},
+    update: {
+      passwordHash: ownerPasswordHash,
+      isActive: true,
+    },
     create: {
       name: "Rajesh Sharma",
       email: "owner@annapurnatiffin.com",
@@ -28,58 +31,116 @@ async function main() {
       passwordHash: ownerPasswordHash,
       role: "OWNER",
       isActive: true,
-      ownedProvider: {
-        create: {
-          businessName: "Shree Annapurna Pure Veg Tiffin & Meals",
-          address: "Plot 45, Near Holkar Science College, Bhawarkua, Indore, MP - 452001",
-          contactPhone: "+91 98260 12345",
-          status: "APPROVED",
-          breakfastCutoff: "07:30",
-          lunchCutoff: "10:00",
-          dinnerCutoff: "17:30",
-          stopLeadHours: 2,
-        },
-      },
     },
-    include: { ownedProvider: true },
   });
 
-  const providerId = ownerUser.ownedProvider.id;
-  console.log(`✅ Owner & Provider created: ${ownerUser.ownedProvider.businessName} (ID: ${providerId})`);
+  // Ensure TiffinProvider exists for Owner
+  let provider = await prisma.tiffinProvider.findUnique({
+    where: { ownerId: ownerUser.id },
+  });
 
-  // 3. Upsert Demo Student
-  const studentUser = await prisma.user.upsert({
-    where: { email: "student@tiffin.com" },
-    update: {},
+  if (!provider) {
+    provider = await prisma.tiffinProvider.create({
+      data: {
+        ownerId: ownerUser.id,
+        businessName: "Shree Annapurna Pure Veg Tiffin & Meals",
+        address: "Plot 45, Near Holkar Science College, Bhawarkua, Indore, MP - 452001",
+        contactPhone: "+91 98260 12345",
+        status: "APPROVED",
+        breakfastCutoff: "07:30",
+        lunchCutoff: "10:00",
+        dinnerCutoff: "17:30",
+        stopLeadHours: 2,
+      },
+    });
+  }
+
+  const providerId = provider.id;
+  console.log(`✅ Owner & Provider verified: ${provider.businessName} (ID: ${providerId})`);
+
+  // 3. Upsert Demo Student 1: Aman Verma (aman.verma@student.edu)
+  const studentUser1 = await prisma.user.upsert({
+    where: { email: "aman.verma@student.edu" },
+    update: {
+      passwordHash: studentPasswordHash,
+      isActive: true,
+    },
     create: {
       name: "Aman Verma",
-      email: "student@tiffin.com",
+      email: "aman.verma@student.edu",
       phone: "+919876543210",
       passwordHash: studentPasswordHash,
       role: "STUDENT",
       isActive: true,
-      studentProfile: {
-        create: {
-          address: "Room 302, Royal Boys Hostel, Bhawarkua, Indore",
-          walletBalance: 850.0,
-          referralCode: "TIFAMAN77",
-          rewardPoints: 120,
-          isJain: false,
-          lessSpicy: true,
-          noOnionGarlic: false,
-          allergies: "None",
-          specialInstructions: "Deliver before 1:00 PM on weekdays",
-          boxesHeld: 1,
-        },
-      },
     },
-    include: { studentProfile: true },
   });
 
-  const studentId = studentUser.studentProfile.id;
-  console.log(`✅ Student created: ${studentUser.name} (StudentProfile ID: ${studentId})`);
+  let studentProfile1 = await prisma.studentProfile.findUnique({
+    where: { userId: studentUser1.id },
+  });
 
-  // 4. Seed Menus with MenuItems for the current week (7 days)
+  if (!studentProfile1) {
+    studentProfile1 = await prisma.studentProfile.create({
+      data: {
+        userId: studentUser1.id,
+        address: "Room 302, Royal Boys Hostel, Bhawarkua, Indore",
+        walletBalance: 850.0,
+        referralCode: "TIFAMAN77",
+        rewardPoints: 120,
+        isJain: false,
+        lessSpicy: true,
+        noOnionGarlic: false,
+        allergies: "None",
+        specialInstructions: "Deliver before 1:00 PM on weekdays",
+        boxesHeld: 1,
+      },
+    });
+  }
+
+  const studentId = studentProfile1.id;
+  console.log(`✅ Student 1 (Aman Verma) verified: ${studentUser1.email} (ID: ${studentId})`);
+
+  // 4. Upsert Demo Student 2: student@tiffin.com
+  const studentUser2 = await prisma.user.upsert({
+    where: { email: "student@tiffin.com" },
+    update: {
+      passwordHash: studentPasswordHash,
+      isActive: true,
+    },
+    create: {
+      name: "Aman Verma",
+      email: "student@tiffin.com",
+      phone: "+919876543299",
+      passwordHash: studentPasswordHash,
+      role: "STUDENT",
+      isActive: true,
+    },
+  });
+
+  let studentProfile2 = await prisma.studentProfile.findUnique({
+    where: { userId: studentUser2.id },
+  });
+
+  if (!studentProfile2) {
+    studentProfile2 = await prisma.studentProfile.create({
+      data: {
+        userId: studentUser2.id,
+        address: "Room 302, Royal Boys Hostel, Bhawarkua, Indore",
+        walletBalance: 850.0,
+        referralCode: "TIFSTUDENT",
+        rewardPoints: 120,
+        isJain: false,
+        lessSpicy: true,
+        noOnionGarlic: false,
+        allergies: "None",
+        specialInstructions: "Deliver before 1:00 PM on weekdays",
+        boxesHeld: 1,
+      },
+    });
+  }
+  console.log(`✅ Student 2 (student@tiffin.com) verified`);
+
+  // 5. Seed Menus with MenuItems for the current week (7 days)
   const mealConfigs = [
     {
       mealType: "BREAKFAST",
@@ -152,9 +213,9 @@ async function main() {
       }
     }
   }
-  console.log("✅ Weekly menus with nested MenuItems created for next 7 days");
+  console.log("✅ Weekly menus with nested MenuItems verified for 7 days");
 
-  // 5. Seed Active Subscription
+  // 6. Seed Active Subscription for Aman
   const startDate = new Date(today);
   const endDate = new Date(today);
   endDate.setUTCDate(today.getUTCDate() + 30);
@@ -178,10 +239,10 @@ async function main() {
         status: "ACTIVE",
       },
     });
-    console.log("✅ Active Monthly subscription seeded with totalPrice ₹5200.00");
+    console.log("✅ Active Monthly subscription seeded for Aman Verma");
   }
 
-  // 6. Seed Deliveries for Today
+  // 7. Seed Deliveries for Today
   for (const config of mealConfigs) {
     const existingDel = await prisma.delivery.findUnique({
       where: {
@@ -207,9 +268,9 @@ async function main() {
       });
     }
   }
-  console.log("✅ Scheduled deliveries seeded for today with unique QR tokens");
+  console.log("✅ Scheduled deliveries verified for today");
 
-  // 7. Seed Inventory Items
+  // 8. Seed Inventory Items
   const inventoryItems = [
     { itemName: "Whole Wheat Atta (MP Sharbati)", quantity: 85.0, unit: "kg", minThreshold: 30.0, supplierName: "Kisan Mandi Indore" },
     { itemName: "Basmati Rice (Rozana)", quantity: 60.0, unit: "kg", minThreshold: 20.0, supplierName: "Lal Qila Traders" },
@@ -236,9 +297,9 @@ async function main() {
       });
     }
   }
-  console.log("✅ Kitchen inventory stock seeded with threshold levels");
+  console.log("✅ Kitchen inventory stock verified");
 
-  // 8. Seed Staff Members
+  // 9. Seed Staff Members
   const staffMembers = [
     { name: "Rameshwar Gurjar", role: "COOK", phone: "9826099111", salary: 22000.0 },
     { name: "Sunil Yadav", role: "DELIVERY", phone: "9826099222", salary: 14000.0 },
@@ -262,51 +323,14 @@ async function main() {
       });
     }
   }
-  console.log("✅ Kitchen staff & delivery team seeded");
+  console.log("✅ Kitchen staff verified");
 
-  // 9. Seed Sample Expense
-  const existingExpense = await prisma.expense.findFirst({
-    where: { providerId },
-  });
-  if (!existingExpense) {
-    await prisma.expense.create({
-      data: {
-        providerId,
-        category: "Raw Materials",
-        amount: 3200.0,
-        expenseDate: today,
-        notes: "Weekly fresh vegetables and dairy from Mandi",
-      },
-    });
-    console.log("✅ Sample kitchen expense recorded");
-  }
-
-  // 10. Seed Sample Food Suggestion & Vote
-  const existingSug = await prisma.foodSuggestion.findFirst({
-    where: { providerId, dishName: "Dal Baati Churma Special" },
-  });
-  if (!existingSug) {
-    const sug = await prisma.foodSuggestion.create({
-      data: {
-        providerId,
-        dishName: "Dal Baati Churma Special",
-        status: "APPROVED",
-      },
-    });
-    await prisma.vote.create({
-      data: {
-        suggestionId: sug.id,
-        studentId,
-      },
-    });
-    console.log("✅ Student food suggestion & vote seeded");
-  }
-
-  console.log("\n✨ DATABASE SEEDING COMPLETED 100% SUCCESSFULLY!");
+  console.log("\n✨ DATABASE SEEDING COMPLETED 100% IDEMPOTENTLY!");
   console.log("=================================================");
   console.log("DEMO CREDENTIALS FOR TESTING & DEPLOYMENT:");
-  console.log("  👨‍🎓 Student: student@tiffin.com    | Password: student123");
-  console.log("  👨‍🍳 Owner:   owner@annapurnatiffin.com | Password: owner123");
+  console.log("  👨‍🎓 Student 1: aman.verma@student.edu | Password: student123");
+  console.log("  👨‍🎓 Student 2: student@tiffin.com     | Password: student123");
+  console.log("  👨‍🍳 Owner:     owner@annapurnatiffin.com | Password: owner123");
   console.log("=================================================");
 }
 
