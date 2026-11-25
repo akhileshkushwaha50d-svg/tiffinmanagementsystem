@@ -1715,8 +1715,15 @@ app.post("/api/notifications/mark-read", authenticate, async (req, res) => {
   }
 });
 
+// Fallback SPA Route
 app.get("*", (req, res) => {
-  res.sendFile(path.join(__dirname, "static", "index.html"));
+  if (req.path.endsWith(".css")) {
+    return res.status(404).type("text/css").send("/* CSS not found */");
+  }
+  if (req.path.endsWith(".js")) {
+    return res.status(404).type("application/javascript").send("// JS not found");
+  }
+  res.sendFile(path.join(__dirname, "index.html"));
 });
 
 // Server Launch
