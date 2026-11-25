@@ -13,6 +13,8 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import crypto from "crypto";
 import path from "path";
+import fs from "fs";
+import { execSync } from "child_process";
 import { fileURLToPath } from "url";
 import { PrismaClient } from "@prisma/client";
 
@@ -21,6 +23,536 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 const prisma = new PrismaClient();
+
+const EMBEDDED_SCHEMA = `generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  STUDENT
+  OWNER
+  SUPER_ADMIN
+}
+
+enum ProviderStatus {
+  PENDING
+  APPROVED
+  SUSPENDED
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  EXPIRED
+  CANCELLED
+  PAUSED
+}
+
+enum MealType {
+  BREAKFAST
+  LUNCH
+  DINNER
+}
+
+enum MenuStatus {
+  DRAFT
+  PUBLISHED
+}
+
+enum DeliveryStatus {
+  ORDER_RECEIVED
+  PREPARING
+  OUT_FOR_DELIVERY
+  DELIVERED
+  STOPPED
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCESS
+  FAILED
+  REFUNDED
+}
+
+enum ComplaintStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+}
+
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  phone        String   @unique
+  passwordHash String
+  role         Role     @default(STUDENT)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  studentProfile StudentProfile?
+  ownedProvider  TiffinProvider?
+  notifications  Notification[]
+  auditLogs      AuditLog[]
+}
+
+model TiffinProvider {
+  id                String         @id @default(cuid())
+  ownerId           String         @unique
+  owner             User           @relation(fields: [ownerId], references: [id])
+  businessName      String
+  address           String
+  contactPhone      String
+  status            ProviderStatus @default(PENDING)
+  breakfastCutoff   String         @default("08:00") // HH:mm IST
+  lunchCutoff       String         @default("10:00")
+  dinnerCutoff      String         @default("18:00")
+  stopLeadHours     Int            @default(2)
+  createdAt         DateTime       @default(now())
+
+  subscriptions   Subscription[]
+  menus           Menu[]
+  deliveries      Delivery[]
+  inventory       InventoryItem[]
+  expenses        Expense[]
+  suggestions     FoodSuggestion[]
+  complaints      Complaint[]
+  staff           Staff[]
+
+  @@index([status])
+}
+
+model StudentProfile {
+  id                  String   @id @default(cuid())
+  userId              String   @unique
+  user                User     @relation(fields: [userId], references: [id])
+  address             String
+  walletBalance       Decimal  @default(0.00) @db.Decimal(10, 2)
+  referralCode        String   @unique
+  referredBy          String?
+  rewardPoints        Int      @default(0)
+  isJain              Boolean  @default(false)
+  lessSpicy           Boolean  @default(false)
+  noOnionGarlic       Boolean  @default(false)
+  allergies           String?
+  specialInstructions String?
+  boxesHeld           Int      @default(0) // Physical tiffin container tracking
+
+  subscriptions      Subscription[]
+  stopMealRequests   StopMealRequest[]
+  deliveries         Delivery[]
+  walletTransactions WalletTransaction[]
+  payments           Payment[]
+  feedbacks          Feedback[]
+  complaints         Complaint[]
+  votes              Vote[]
+}
+
+model Subscription {
+  id                String             @id @default(cuid())
+  studentId         String
+  student           StudentProfile     @relation(fields: [studentId], references: [id])
+  providerId        String
+  provider          TiffinProvider     @relation(fields: [providerId], references: [id])
+  planType          String             // DAILY, WEEKLY, MONTHLY, CUSTOM
+  includesBreakfast Boolean            @default(false)
+  includesLunch     Boolean            @default(true)
+  includesDinner    Boolean            @default(true)
+  startDate         DateTime
+  endDate           DateTime
+  totalPrice        Decimal            @db.Decimal(10, 2)
+  status            SubscriptionStatus @default(ACTIVE)
+  createdAt         DateTime           @default(now())
+
+  @@index([studentId, status])
+  @@index([providerId, status])
+}
+
+model Menu {
+  id          String         @id @default(cuid())
+  providerId  String
+  provider    TiffinProvider @relation(fields: [providerId], references: [id])
+  menuDate    DateTime       @db.Date
+  mealType    MealType
+  status      MenuStatus     @default(DRAFT)
+  mealTiming  String         // e.g. "12:30 PM - 2:00 PM"
+  isSpecial   Boolean        @default(false)
+  publishedAt DateTime?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  items MenuItem[]
+
+  @@unique([providerId, menuDate, mealType])
+  @@index([providerId, status, menuDate])
+}
+
+model MenuItem {
+  id          String  @id @default(cuid())
+  menuId      String
+  menu        Menu    @relation(fields: [menuId], references: [id], onDelete: Cascade)
+  name        String
+  description String?
+  imageUrl    String?
+  isAvailable Boolean @default(true)
+}
+
+model StopMealRequest {
+  id         String         @id @default(cuid())
+  studentId  String
+  student    StudentProfile @relation(fields: [studentId], references: [id])
+  providerId String
+  mealDate   DateTime       @db.Date
+  mealType   MealType
+  reason     String?
+  isResumed  Boolean        @default(false)
+  creditAmt  Decimal        @default(0.00) @db.Decimal(10, 2)
+  createdAt  DateTime       @default(now())
+
+  @@unique([studentId, mealDate, mealType])
+  @@index([providerId, mealDate])
+}
+
+model Delivery {
+  id          String         @id @default(cuid())
+  studentId   String
+  student     StudentProfile @relation(fields: [studentId], references: [id])
+  providerId  String
+  provider    TiffinProvider @relation(fields: [providerId], references: [id])
+  mealDate    DateTime       @db.Date
+  mealType    MealType
+  status      DeliveryStatus @default(ORDER_RECEIVED)
+  qrToken     String         @unique @default(cuid())
+  deliveredAt DateTime?
+  address     String
+  updatedAt   DateTime       @updatedAt
+
+  @@unique([studentId, mealDate, mealType])
+  @@index([providerId, mealDate, status])
+}
+
+model Payment {
+  id                String         @id @default(cuid())
+  studentId         String
+  student           StudentProfile @relation(fields: [studentId], references: [id])
+  providerId        String?
+  amount            Decimal        @db.Decimal(10, 2)
+  gatewayOrderId    String         @unique
+  gatewayPaymentId  String?        @unique
+  status            PaymentStatus  @default(PENDING)
+  purpose           String         // WALLET_RECHARGE, SUBSCRIPTION
+  createdAt         DateTime       @default(now())
+  verifiedAt        DateTime?
+}
+
+model WalletTransaction {
+  id          String         @id @default(cuid())
+  studentId   String
+  student     StudentProfile @relation(fields: [studentId], references: [id])
+  type        String         // CREDIT, DEBIT, REFUND
+  amount      Decimal        @db.Decimal(10, 2)
+  description String
+  referenceId String?
+  createdAt   DateTime       @default(now())
+}
+
+model Feedback {
+  id              String         @id @default(cuid())
+  studentId       String
+  student         StudentProfile @relation(fields: [studentId], references: [id])
+  providerId      String
+  mealDate        DateTime       @db.Date
+  mealType        MealType
+  overallVerdict  String         // Excellent, Good, Average, Not Good
+  tasteRating     Int
+  qualityRating   Int
+  quantityRating  Int
+  hygieneRating   Int
+  comment         String?
+  ownerResponse   String?
+  createdAt       DateTime       @default(now())
+}
+
+model FoodSuggestion {
+  id         String         @id @default(cuid())
+  providerId String
+  provider   TiffinProvider @relation(fields: [providerId], references: [id])
+  dishName   String
+  status     String         @default("PENDING") // PENDING, APPROVED, REJECTED
+  createdAt  DateTime       @default(now())
+  votes      Vote[]
+}
+
+model Vote {
+  id           String         @id @default(cuid())
+  suggestionId String
+  suggestion   FoodSuggestion @relation(fields: [suggestionId], references: [id], onDelete: Cascade)
+  studentId    String
+  student      StudentProfile @relation(fields: [studentId], references: [id])
+
+  @@unique([suggestionId, studentId])
+}
+
+model Complaint {
+  id          String          @id @default(cuid())
+  studentId   String
+  student     StudentProfile  @relation(fields: [studentId], references: [id])
+  providerId  String
+  provider    TiffinProvider  @relation(fields: [providerId], references: [id])
+  category    String          // Quality, Delivery Delay, Payment, Incorrect Order
+  description String
+  status      ComplaintStatus @default(OPEN)
+  resolution  String?
+  createdAt   DateTime        @default(now())
+}
+
+model InventoryItem {
+  id           String         @id @default(cuid())
+  providerId   String
+  provider     TiffinProvider @relation(fields: [providerId], references: [id])
+  itemName     String
+  quantity     Decimal        @db.Decimal(10, 2)
+  unit         String         // kg, L, cylinders
+  minThreshold Decimal        @db.Decimal(10, 2)
+  supplierName String?
+  updatedAt    DateTime       @updatedAt
+}
+
+model Expense {
+  id          String         @id @default(cuid())
+  providerId  String
+  provider    TiffinProvider @relation(fields: [providerId], references: [id])
+  category    String         // Raw Materials, Staff, Gas, Electricity, Rent
+  amount      Decimal        @db.Decimal(10, 2)
+  expenseDate DateTime       @db.Date
+  notes       String?
+  createdAt   DateTime       @default(now())
+}
+
+model Staff {
+  id         String         @id @default(cuid())
+  providerId String
+  provider   TiffinProvider @relation(fields: [providerId], references: [id])
+  name       String
+  role       String         // COOK, HELPER, DELIVERY
+  phone      String
+  salary     Decimal        @db.Decimal(10, 2)
+  isActive   Boolean        @default(true)
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  title     String
+  message   String
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  actorId   String
+  actor     User     @relation(fields: [actorId], references: [id])
+  action    String
+  targetId  String?
+  metadata  Json?
+  createdAt DateTime @default(now())
+}
+`;
+
+// Ensure prisma/schema.prisma exists on disk
+try {
+  const pDir = path.join(__dirname, "prisma");
+  const pFile = path.join(pDir, "schema.prisma");
+  if (!fs.existsSync(pFile)) {
+    fs.mkdirSync(pDir, { recursive: true });
+    fs.writeFileSync(pFile, EMBEDDED_SCHEMA, "utf-8");
+    console.log("Auto-generated missing prisma/schema.prisma on server disk.");
+  }
+} catch (e) {
+  console.error("Schema write error:", e);
+}
+
+// Internal self-contained seeder function
+async function seedDemoData() {
+  const ownerPwd = await bcrypt.hash("owner123", 10);
+  const studentPwd = await bcrypt.hash("student123", 10);
+
+  // 1. Owner
+  const owner = await prisma.user.upsert({
+    where: { email: "owner@annapurnatiffin.com" },
+    update: {},
+    create: {
+      name: "Rajesh Sharma",
+      email: "owner@annapurnatiffin.com",
+      phone: "+919826012345",
+      passwordHash: ownerPwd,
+      role: "OWNER",
+      isActive: true,
+      ownedProvider: {
+        create: {
+          businessName: "Shree Annapurna Pure Veg Tiffin & Meals",
+          address: "Plot 45, Near Holkar Science College, Bhawarkua, Indore",
+          contactPhone: "+91 98260 12345",
+          status: "APPROVED",
+          breakfastCutoff: "07:30",
+          lunchCutoff: "10:00",
+          dinnerCutoff: "17:30",
+          stopLeadHours: 2,
+        },
+      },
+    },
+    include: { ownedProvider: true },
+  });
+
+  const providerId = owner.ownedProvider.id;
+
+  // 2. Student 1: Aman Verma (aman.verma@student.edu)
+  const aman = await prisma.user.upsert({
+    where: { email: "aman.verma@student.edu" },
+    update: {},
+    create: {
+      name: "Aman Verma",
+      email: "aman.verma@student.edu",
+      phone: "+919876543210",
+      passwordHash: studentPwd,
+      role: "STUDENT",
+      isActive: true,
+      studentProfile: {
+        create: {
+          address: "Room 302, Royal Boys Hostel, Bhawarkua, Indore",
+          walletBalance: 850.0,
+          referralCode: "TIFAMAN77",
+          rewardPoints: 120,
+          isJain: false,
+          lessSpicy: true,
+          boxesHeld: 1,
+        },
+      },
+    },
+    include: { studentProfile: true },
+  });
+
+  // 3. Student 2: student@tiffin.com
+  await prisma.user.upsert({
+    where: { email: "student@tiffin.com" },
+    update: {},
+    create: {
+      name: "Aman Verma",
+      email: "student@tiffin.com",
+      phone: "+919876543211",
+      passwordHash: studentPwd,
+      role: "STUDENT",
+      isActive: true,
+      studentProfile: {
+        create: {
+          address: "Room 302, Royal Boys Hostel, Bhawarkua, Indore",
+          walletBalance: 850.0,
+          referralCode: "TIFSTUDENT",
+          rewardPoints: 120,
+        },
+      },
+    },
+  });
+
+  // 4. Seed 7 days of Menus
+  const today = new Date();
+  today.setUTCHours(0, 0, 0, 0);
+
+  const mealConfigs = [
+    { mealType: "BREAKFAST", timing: "07:30 AM - 09:30 AM", items: ["Indori Poha", "Ratlami Sev", "Jalebi (2 pcs)", "Masala Chai"] },
+    { mealType: "LUNCH", timing: "12:30 PM - 02:30 PM", items: ["Paneer Butter Masala", "Dal Tadka", "Basmati Rice", "4 Phulkas", "Raita"] },
+    { mealType: "DINNER", timing: "07:30 PM - 09:30 PM", items: ["Aloo Gobhi Matar", "Moong Dal", "3 Phulkas", "Steamed Rice", "Pickle"] },
+  ];
+
+  for (let offset = 0; offset < 7; offset++) {
+    const menuDate = new Date(today);
+    menuDate.setUTCDate(today.getUTCDate() + offset);
+
+    for (const cfg of mealConfigs) {
+      const exists = await prisma.menu.findUnique({
+        where: {
+          providerId_menuDate_mealType: {
+            providerId,
+            menuDate,
+            mealType: cfg.mealType,
+          },
+        },
+      });
+
+      if (!exists) {
+        await prisma.menu.create({
+          data: {
+            providerId,
+            menuDate,
+            mealType: cfg.mealType,
+            status: "PUBLISHED",
+            mealTiming: cfg.timing,
+            isSpecial: offset === 0 && cfg.mealType === "LUNCH",
+            publishedAt: new Date(),
+            items: {
+              create: cfg.items.map((it) => ({ name: it, isAvailable: true })),
+            },
+          },
+        });
+      }
+    }
+  }
+
+  // 5. Subscription
+  const existingSub = await prisma.subscription.findFirst({
+    where: { studentId: aman.studentProfile.id, providerId },
+  });
+  if (!existingSub) {
+    const endDate = new Date(today);
+    endDate.setUTCDate(today.getUTCDate() + 30);
+    await prisma.subscription.create({
+      data: {
+        studentId: aman.studentProfile.id,
+        providerId,
+        planType: "MONTHLY",
+        includesBreakfast: true,
+        includesLunch: true,
+        includesDinner: true,
+        startDate: today,
+        endDate,
+        totalPrice: 5200.0,
+        status: "ACTIVE",
+      },
+    });
+  }
+
+  console.log("Demo seed data applied successfully!");
+}
+
+// Setup API route
+app.get("/api/setup", async (req, res) => {
+  try {
+    console.log("Manual setup requested via /api/setup");
+    try {
+      execSync("npx prisma db push --accept-data-loss", { stdio: "inherit", timeout: 60000 });
+    } catch (pe) {
+      console.log("prisma db push info:", pe.message);
+    }
+    await seedDemoData();
+    res.json({
+      success: true,
+      message: "Database initialized and demo accounts (Aman Verma & Rajesh Sharma) ready!",
+      student: "aman.verma@student.edu (pwd: student123)",
+      owner: "owner@annapurnatiffin.com (pwd: owner123)",
+    });
+  } catch (err) {
+    console.error("Setup error:", err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 const PORT = process.env.PORT || 5000;
 const JWT_SECRET = process.env.JWT_SECRET || "tiffin_secure_jwt_secret_key_2026_production";
 
@@ -176,12 +708,39 @@ app.post("/api/auth/login", async (req, res) => {
       return res.status(400).json({ success: false, error: "Email/phone and password are required." });
     }
 
-    const user = await prisma.user.findFirst({
-      where: {
-        OR: [{ email: loginId }, { phone: loginId }],
-      },
-      include: { ownedProvider: true, studentProfile: true },
-    });
+    let user = null;
+    try {
+      user = await prisma.user.findFirst({
+        where: {
+          OR: [{ email: loginId }, { phone: loginId }],
+        },
+        include: { ownedProvider: true, studentProfile: true },
+      });
+    } catch (tableErr) {
+      console.log("Database table missing on login, attempting auto-push...", tableErr.message);
+      try {
+        execSync("npx prisma db push --accept-data-loss", { stdio: "inherit", timeout: 45000 });
+      } catch (pe) {}
+      await seedDemoData();
+      user = await prisma.user.findFirst({
+        where: { OR: [{ email: loginId }, { phone: loginId }] },
+        include: { ownedProvider: true, studentProfile: true },
+      });
+    }
+
+    // Auto-seed demo accounts if fresh database
+    if (!user && (loginId === "aman.verma@student.edu" || loginId === "student@tiffin.com" || loginId === "owner@annapurnatiffin.com" || loginId === "owner@tiffin.com")) {
+      console.log("Demo user login on fresh DB, auto-seeding...");
+      try {
+        await seedDemoData();
+        user = await prisma.user.findFirst({
+          where: { OR: [{ email: loginId }, { phone: loginId }] },
+          include: { ownedProvider: true, studentProfile: true },
+        });
+      } catch (se) {
+        console.error("Auto seed error on login:", se);
+      }
+    }
 
     if (!user || !(await bcrypt.compare(password, user.passwordHash))) {
       return res.status(401).json({ success: false, error: "Invalid credentials or account does not exist." });
@@ -1728,6 +2287,27 @@ app.get("*", (req, res) => {
 
 // Server Launch
 if (process.env.NODE_ENV !== "test") {
+  // Run background initialization
+  setTimeout(async () => {
+    try {
+      console.log("Checking database schema readiness...");
+      try {
+        await prisma.user.count();
+      } catch (err) {
+        console.log("Auto-pushing database schema on startup...");
+        execSync("npx prisma db push --accept-data-loss", { stdio: "inherit", timeout: 45000 });
+      }
+      const count = await prisma.user.count();
+      if (count === 0) {
+        console.log("Database empty, running initial seed...");
+        await seedDemoData();
+      }
+      console.log("Database ready with " + (await prisma.user.count()) + " users.");
+    } catch (e) {
+      console.log("Startup init note:", e.message);
+    }
+  }, 2000);
+
   app.listen(PORT, () => {
     console.log(`=================================================================`);
     console.log(`  EXPRESS + PRISMA TIFFIN MANAGEMENT BACKEND RUNNING`);
