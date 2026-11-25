@@ -1,7 +1,7 @@
 {
   "name": "tiffin-management-delivery-platform",
   "version": "2.0.0",
-  "description": "Complete Tiffin Management & Delivery Web Application with Multi-Tenant Isolation, IST Stop Cutoffs, QR Tokens, and Dual-Stack Execution",
+  "description": "Complete Tiffin Management & Delivery Web Application with Fast JSON & In-Memory Store",
   "type": "module",
   "main": "server.js",
   "engines": {
@@ -9,43 +9,23 @@
   },
   "scripts": {
     "start": "node server.js",
-    "build": "prisma generate",
-    "render-build": "npm install && npx prisma generate",
     "dev": "node --watch server.js",
-    "prisma:generate": "prisma generate",
-    "prisma:push": "prisma db push",
-    "prisma:migrate": "prisma migrate dev",
-    "prisma:deploy": "prisma migrate deploy",
-    "prisma:seed": "prisma db seed",
-    "prisma:studio": "prisma studio",
+    "build": "echo 'Build completed'",
+    "render-build": "npm install",
     "test:python": "python test_system.py"
-  },
-  "prisma": {
-    "seed": "node prisma/seed.js"
   },
   "keywords": [
     "tiffin-management",
     "meal-delivery",
-    "express",
-    "prisma",
-    "postgresql",
-    "sqlite",
-    "ist-timezone",
-    "qr-verification"
+    "express"
   ],
   "author": "Antigravity Engineering",
   "license": "MIT",
   "dependencies": {
-    "@prisma/client": "^5.10.0",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.18.3",
-    "express-rate-limit": "^7.1.5",
-    "helmet": "^7.1.0",
     "jsonwebtoken": "^9.0.2"
-  },
-  "devDependencies": {
-    "prisma": "^5.10.0"
   }
 }
