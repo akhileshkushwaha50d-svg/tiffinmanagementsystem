@@ -1,0 +1,86 @@
+{
+  "project_name": "Tiffin Management & Delivery Web Application",
+  "version": "2.0.0",
+  "database": {
+    "engine": "SQLite (Python stdlib) / PostgreSQL (Prisma DDL)",
+    "db_path": "data/tiffin.db",
+    "prisma_schema": "prisma/schema.prisma",
+    "postgresql_ddl": "prisma/schema.sql",
+    "seed_script": "prisma/seed.js",
+    "total_tables": 22,
+    "tables": [
+      "users",
+      "tiffin_providers",
+      "pricing_config",
+      "meal_plans",
+      "students",
+      "menus",
+      "subscriptions",
+      "payments",
+      "orders",
+      "deliveries",
+      "attendance",
+      "stop_meal_requests",
+      "food_suggestions",
+      "food_votes",
+      "feedback",
+      "expenses",
+      "notifications",
+      "audit_logs",
+      "wallet_transactions",
+      "complaints",
+      "inventory_items",
+      "staff"
+    ]
+  },
+  "architecture": {
+    "frontend": "Vanilla HTML5, CSS3, JavaScript (ES6+), Canvas charts",
+    "backend": "Python 3 Standard Library http.server + ThreadingTCPServer / Node.js Express + Prisma",
+    "dependencies": "Zero external pip dependencies required for Python / npm dependencies for Express",
+    "offline_support": "LocalFallback integrated state simulation for file:/// execution"
+  },
+  "deployment": {
+    "dockerfile": "Dockerfile",
+    "dockerfile_python": "Dockerfile.python",
+    "docker_compose": "docker-compose.yml",
+    "render_blueprint": "render.yaml",
+    "procfile": "Procfile",
+    "railway_config": "railway.json",
+    "env_production_template": ".env.production.example",
+    "guide": "DEPLOYMENT_GUIDE.md"
+  },
+  "test_suite": {
+    "test_file": "test_system.py",
+    "total_tests": 18,
+    "passed_tests": 18,
+    "status": "ALL 18 ACCEPTANCE & PRISMA MODEL TESTS PASSED"
+  },
+  "backends": {
+    "nodejs_express": {
+      "entrypoint": "server.js",
+      "orm": "Prisma Client (@prisma/client)",
+      "database": "PostgreSQL (Production) / SQLite",
+      "schema": "prisma/schema.prisma",
+      "port": 5000,
+      "features": [
+        "Strict IST (+05:30) Timezone Stop Cutoff calculation (isBeforeStopCutoff)",
+        "JWT Authentication & Role-Based Access Control (STUDENT, OWNER, SUPER_ADMIN)",
+        "Atomic Prisma transactions ($transaction) for checkout and stop-meal credits",
+        "Multi-tenant data isolation by providerId",
+        "Contactless Delivery QR Token verification"
+      ]
+    },
+    "python_stdlib": {
+      "entrypoint": "server.py",
+      "database_layer": "database.py",
+      "database": "SQLite (data/tiffin.db)",
+      "port": 8000,
+      "dependencies": "Zero external dependencies",
+      "features": [
+        "Multithreaded REST API server + Static file server",
+        "Full CRUD on all 22 relational tables",
+        "18/18 Automated Acceptance Tests passing in test_system.py"
+      ]
+    }
+  }
+}

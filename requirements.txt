@@ -1,0 +1,4 @@
+# Python Standard Library Deployment Requirements
+# Note: The Python backend (server.py & database.py) uses Python 3 Standard Library only.
+# No external pip dependencies are required.
+# Built-in libraries used: http.server, sqlite3, hashlib, json, datetime, urllib, threading

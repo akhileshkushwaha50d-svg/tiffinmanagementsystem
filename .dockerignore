@@ -1,0 +1,14 @@
+node_modules
+npm-debug.log
+.git
+.gitignore
+.dockerignore
+.env
+__pycache__
+*.pyc
+*.mp4
+data/*.db
+data/*.sqlite
+README.md
+INDEX.md
+*.log

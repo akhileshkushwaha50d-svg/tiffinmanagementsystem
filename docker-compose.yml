@@ -1,0 +1,45 @@
+version: "3.8"
+
+services:
+  # PostgreSQL Database Service
+  postgres:
+    image: postgres:16-alpine
+    container_name: tiffin_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgrespassword2026
+      POSTGRES_DB: tiffin_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./prisma/schema.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d tiffin_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Express.js + Prisma Full-Stack Web Application
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: tiffin_web_app
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    environment:
+      - PORT=5000
+      - NODE_ENV=production
+      - JWT_SECRET=tiffin_production_secure_jwt_secret_key_2026
+      - CLIENT_URL=http://localhost:5000
+      - DATABASE_URL=postgresql://postgres:postgrespassword2026@postgres:5432/tiffin_db?schema=public
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+    driver: local

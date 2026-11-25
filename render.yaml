@@ -1,0 +1,34 @@
+# =================================================================
+# Render.com Blueprint Specification for Tiffin Management & Delivery App
+# Free Web Service + Free Managed PostgreSQL Database
+# =================================================================
+
+services:
+  - type: web
+    name: tiffin-delivery-platform
+    runtime: node
+    plan: free
+    region: oregon
+    buildCommand: npm install && npx prisma generate
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: JWT_SECRET
+        generateValue: true
+      - key: CLIENT_URL
+        value: "*"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: tiffin-db
+          property: connectionString
+
+databases:
+  - name: tiffin-db
+    plan: free
+    region: oregon
+    databaseName: tiffin_db
+    user: tiffin_admin
